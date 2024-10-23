@@ -1,6 +1,5 @@
 import Foundation
 import XCTest
-import TSCBasic
 
 @testable import SwiftyTailwind
 
@@ -17,8 +16,12 @@ final class DownloaderTests: XCTestCase {
         super.tearDown()
     }
     func test_download() async throws {
-        _ = try await withTemporaryDirectory { tmpDirectory in
-            try await subject.download(version: .latest, directory: tmpDirectory)
+        let tmpDir = URL.temporaryDirectory.appending(path: "\(UUID().uuidString)").path()
+        do {
+            _ = try await subject.download(version: .latest, directory: tmpDir)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
         }
+        try FileManager.default.removeItem(atPath: tmpDir)
     }
 }

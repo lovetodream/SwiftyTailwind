@@ -1,6 +1,5 @@
 import Foundation
 import Logging
-import TSCBasic
 import AsyncHTTPClient
 import NIOCore
 import NIOFoundationCompat
@@ -32,11 +31,11 @@ protocol Downloading {
     /**
      It downloads the latest version of Tailwind in a default directory.
      */
-    func download() async throws -> AbsolutePath
+    func download() async throws -> String
     /**
      It downloads the given version of Tailwind in the given directory.
      */
-    func download(version: TailwindVersion, directory: AbsolutePath, numRetries: Int) async throws -> AbsolutePath
+    func download(version: TailwindVersion, directory: String, numRetries: Int) async throws -> String
 }
 
 class Downloader: Downloading {
@@ -46,8 +45,8 @@ class Downloader: Downloading {
     /**
      Returns the default directory where Tailwind binaries should be downloaded.
      */
-    static func defaultDownloadDirectory() -> AbsolutePath {
-        return try! localFileSystem.tempDirectory.appending(component: "SwiftyTailwind")
+    static func defaultDownloadDirectory() -> String {
+        return URL.temporaryDirectory.appending(component: "SwiftyTailwind").absoluteString
     }
     
     static let sha256FileName: String = "sha256sums.txt"
@@ -58,22 +57,22 @@ class Downloader: Downloading {
         self.logger = Logger(label: "io.tuist.SwiftyTailwind.Downloader")
     }
     
-    func download() async throws -> TSCBasic.AbsolutePath {
+    func download() async throws -> String {
         try await download(version: .latest, directory: Downloader.defaultDownloadDirectory())
     }
     
     func download(version: TailwindVersion,
-                  directory: AbsolutePath,
-                  numRetries: Int = 0) async throws -> AbsolutePath
+                  directory: String,
+                  numRetries: Int = 0) async throws -> String
     {
         guard let binaryName = binaryName() else {
             throw DownloaderError.unableToDetermineBinaryName
         }
         let expectedVersion = try await versionToDownload(version: version)
-        let binaryPath = directory.appending(components: [expectedVersion, binaryName])
-        if localFileSystem.exists(binaryPath) { return binaryPath }
+        let binaryPath = directory.appending(pathComponents: [expectedVersion, binaryName])
+        if FileManager.default.fileExists(atPath: binaryPath) { return binaryPath }
         try await downloadBinary(name: binaryName, version: expectedVersion, to: binaryPath)
-        let checksumPath = directory.appending(components: [expectedVersion, Self.sha256FileName])
+        let checksumPath = directory.appending(pathComponents: [expectedVersion, Self.sha256FileName])
         try await downloadChecksumFile(version: expectedVersion, into: checksumPath)
         do {
             let binaryChecksum = try Self.checksumValidator.generateChecksumFrom(binaryPath)
@@ -97,16 +96,17 @@ class Downloader: Downloading {
         return binaryPath
     }
     
-    private func downloadBinary(name: String, version: String, to downloadPath: AbsolutePath) async throws {
-        if !localFileSystem.exists(downloadPath.parentDirectory) {
-            logger.debug("Creating directory \(downloadPath.parentDirectory)")
-            try localFileSystem.createDirectory(downloadPath.parentDirectory, recursive: true)
+    private func downloadBinary(name: String, version: String, to downloadPath: String) async throws {
+        let parentDirectory = downloadPath.split(separator: "/", omittingEmptySubsequences: false).dropLast().joined(separator: "/")
+        if !FileManager.default.fileExists(atPath: parentDirectory, isDirectory: nil) {
+            logger.debug("Creating directory \(parentDirectory)")
+            try FileManager.default.createDirectory(atPath: parentDirectory, withIntermediateDirectories: true)
         }
         let url = "https://github.com/tailwindlabs/tailwindcss/releases/download/\(version)/\(name)"
         logger.debug("Downloading binary \(name) from version \(version)...")
-        let client = HTTPClient(eventLoopGroupProvider: .createNew)
+        let client = HTTPClient()
         let request = try HTTPClient.Request(url: url)
-        let delegate = try FileDownloadDelegate(path: downloadPath.pathString, reportProgress: { [weak self] in
+        let delegate = try FileDownloadDelegate(path: downloadPath, reportProgress: { [weak self] in
             if let totalBytes = $0.totalBytes {
                 self?.logger.debug("Total bytes count: \(totalBytes)")
             }
@@ -117,7 +117,7 @@ class Downloader: Downloading {
                 client.execute(request: request, delegate: delegate).futureResult.whenComplete { result in
                     switch result {
                     case .success(_):
-                        try? localFileSystem.chmod(.executable, path: downloadPath)
+                        _ = try? shellOut(command: "chmod +x \(downloadPath)")
                         continuation.resume()
                     case .failure(let error):
                         continuation.resume(throwing: error)
@@ -131,7 +131,7 @@ class Downloader: Downloading {
         try await client.shutdown()
     }
     
-    private func downloadChecksumFile(version: String, into downloadPath: AbsolutePath) async throws {
+    private func downloadChecksumFile(version: String, into downloadPath: String) async throws {
         try await downloadBinary(name: Self.sha256FileName, version: version, to: downloadPath)
     }
     
@@ -160,7 +160,7 @@ class Downloader: Downloading {
         let latestReleaseURL = "https://api.github.com/repos/tailwindlabs/tailwindcss/releases/latest"
         logger.debug("Getting the latest Tailwind version from \(latestReleaseURL)")
         
-        let httpClient = HTTPClient(eventLoopGroupProvider: .createNew)
+        let httpClient = HTTPClient()
         
         var tagName: String!
         do {
@@ -200,5 +200,16 @@ class Downloader: Downloading {
         os = "macos"
         #endif
         return "tailwindcss-\(os as String)-\(architecture)\(ext as String)"
+    }
+}
+
+private extension String {
+    func appending(pathComponents: [String]) -> String {
+        let joined = pathComponents.joined(by: "/")
+        if self.last == "/" {
+            return self + joined
+        } else {
+            return self + "/" + joined
+        }
     }
 }

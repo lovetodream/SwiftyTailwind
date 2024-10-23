@@ -1,6 +1,4 @@
 import Foundation
-import TSCBasic
-import TSCUtility
 
 public enum CpuArchitecture: String, Hashable  {
     case aarch64   = "aarch64"
@@ -29,10 +27,7 @@ protocol ArchitectureDetecting {
 
 class ArchitectureDetector: ArchitectureDetecting {
     func architecture() -> CpuArchitecture? {
-        let process = Process(arguments: ["uname", "-m"], outputRedirection: .collect)
-        _ = try? process.launch()
-        let result = try? process.waitUntilExit()
-        let output = try? result?.utf8Output().spm_chomp()
+        let output = try? shellOut(to: "uname", arguments: ["-m"])
         return CpuArchitecture(rawValue: output ?? "")
     }
 }

@@ -1,11 +1,11 @@
-import TSCBasic
+import Foundation
 
 /**
  This class is the main interface to download and run [Tailwind](https://tailwindcss.com) from a Swift project. Every function of the interface we'll lazily download a portable Tailwind executable, which includes the [NodeJS](https://nodejs.org/en) runtime, and invoke it using system processes.
  */
 public class SwiftyTailwind {
     private let version: TailwindVersion
-    private let directory: AbsolutePath
+    private let directory: String
     private let downloader: Downloading
     private let executor: Executing
     
@@ -15,7 +15,7 @@ public class SwiftyTailwind {
      - version: The version of Tailwind to use. You can specify a fixed version or use the latest one.
      - directory: The directory where the executables will be downloaded. When not provided, it defaults to the system's default temporary directory.
      */
-    public convenience init(version: TailwindVersion = .latest, directory: AbsolutePath) {
+    public convenience init(version: TailwindVersion = .latest, directory: String) {
         self.init(version: version, directory: directory, downloader: Downloader(), executor: Executor())
     }
     
@@ -29,7 +29,7 @@ public class SwiftyTailwind {
     }
     
     init(version: TailwindVersion,
-         directory: AbsolutePath,
+         directory: String,
          downloader: Downloading,
          executor: Executing)
     {
@@ -45,7 +45,7 @@ public class SwiftyTailwind {
      - directory: The directory in which the Tailwind configuration will be created. When not passed, it defaults to the working directory from where the process is running.
      - options: A set of ``SwiftyTailwind.InitializeOption`` options to customize the initialization.
      */
-    public func initialize(directory: AbsolutePath = localFileSystem.currentWorkingDirectory!,
+    public func initialize(directory: String = getWorkingFolder(),
                            options: InitializeOption...) async throws
     {
         var arguments = ["init"]
@@ -60,13 +60,13 @@ public class SwiftyTailwind {
      - directory: The directory from where to run the command. When not passed, it defaults to the working directory from where the process is running.
      - options: A set of ``SwiftyTailwind.RunOption`` options to customize the execution.
      */
-    public func run(input: AbsolutePath,
-                    output: AbsolutePath,
-                    directory: AbsolutePath = localFileSystem.currentWorkingDirectory!,
+    public func run(input: String,
+                    output: String,
+                    directory: String = getWorkingFolder(),
                     options: RunOption...) async throws {
         var arguments: [String] = [
-            "--input", input.pathString,
-            "--output", output.pathString
+            "--input", input,
+            "--output", output
         ]
         arguments.append(contentsOf: Set(options).executableFlags)
         if (!options.contains(.autoPrefixer)) { arguments.append("--no-autoprefixer")}
@@ -77,7 +77,7 @@ public class SwiftyTailwind {
     /**
      Downloads the Tailwind portable executable
      */
-    private func download() async throws -> AbsolutePath {
+    private func download() async throws -> String {
         try await downloader.download(version: version, directory: directory, numRetries: 0)
     }
 }
@@ -161,12 +161,12 @@ public extension SwiftyTailwind {
         /**
          It uses a configuration other than the one in the current working directory. When passed, it passes the `--config` argument to the Tailwind executable.
          */
-        case config(AbsolutePath)
-        
+        case config(String)
+
         /**
          It runs PostCSS using the configuration file at the given path. When passed, it passes the `--postcss` argument to the Tailwind executable.
          */
-        case postcss(AbsolutePath)
+        case postcss(String)
         
         /**
          It specifies a [glob](https://en.wikipedia.org/wiki/Glob_(programming)) pattern that the Tailwind executable uses to to tree-shake the output CSS eliminating the Tailwind classes that are not used. When passed, it passes the `--content` argument to the Tailwind executable.
@@ -187,12 +187,23 @@ public extension SwiftyTailwind {
             case .minify:
                 return ["--minify"]
             case .config(let path):
-                return ["--config", path.pathString]
+                return ["--config", path]
             case .postcss(let path):
-                return ["--postcss", path.pathString]
+                return ["--postcss", path]
             case .content(let content):
                 return ["--content", content]
             }
         }
+    }
+}
+
+@usableFromInline
+func getWorkingFolder() -> String {
+    if let cwd = getcwd(nil, Int(PATH_MAX)) {
+        let workingFolder = String(cString: cwd) + "/"
+        free(cwd)
+        return workingFolder
+    } else {
+        return "./"
     }
 }

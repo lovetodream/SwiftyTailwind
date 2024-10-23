@@ -1,5 +1,3 @@
-import Foundation
-
 public enum TailwindVersion {
     /**
     It pulls the latest version.

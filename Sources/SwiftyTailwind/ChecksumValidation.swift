@@ -1,16 +1,15 @@
 import Foundation
-import TSCBasic
 
 protocol ChecksumValidating {
-    func generateChecksumFrom(_ filePath: AbsolutePath) throws -> String
-    func compareChecksum(from filePath: AbsolutePath, to checksum: String) throws -> Bool
+    func generateChecksumFrom(_ filePath: String) throws -> String
+    func compareChecksum(from filePath: String, to checksum: String) throws -> Bool
 }
 
 struct ChecksumValidation: ChecksumValidating {
-    func generateChecksumFrom(_ filePath: AbsolutePath) throws -> String {
+    func generateChecksumFrom(_ filePath: String) throws -> String {
         let checksumGenerationTask = Process()
         checksumGenerationTask.launchPath = "/usr/bin/shasum"
-        checksumGenerationTask.arguments = ["-a", "256", filePath.pathString]
+        checksumGenerationTask.arguments = ["-a", "256", filePath]
         
         let pipe = Pipe()
         checksumGenerationTask.standardOutput = pipe
@@ -24,8 +23,8 @@ struct ChecksumValidation: ChecksumValidating {
         return output
     }
     
-    func compareChecksum(from filePath: AbsolutePath, to checksum: String) throws -> Bool {
-        let checksumString = try String(contentsOf: filePath.asURL)
+    func compareChecksum(from filePath: String, to checksum: String) throws -> Bool {
+        let checksumString = try String(contentsOf: URL(fileURLWithPath: filePath))
         return checksum == checksumString
     }
 }
