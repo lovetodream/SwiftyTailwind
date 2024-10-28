@@ -46,7 +46,7 @@ class Downloader: Downloading {
      Returns the default directory where Tailwind binaries should be downloaded.
      */
     static func defaultDownloadDirectory() -> String {
-        return URL.temporaryDirectory.appending(component: "SwiftyTailwind").absoluteString
+        return URL.temporaryDirectory.appending(component: "SwiftyTailwind").path()
     }
     
     static let sha256FileName: String = "sha256sums.txt"
